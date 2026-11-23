@@ -1,0 +1,20 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sdf
+*.opensdf
+*.VC.db
+ipch/
+Debug/
+Release/
+x64/
+*.obj
+*.pch
+*.ilk
+*.pdb
+*.exe
+
+# Python
+__pycache__/
+*.pyc
