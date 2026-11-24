@@ -18,3 +18,8 @@ x64/
 # Python
 __pycache__/
 *.pyc
+# AI / Notes
+CLAUDE.md
+docs/
+_stubs/
+downloads/
