@@ -1,4 +1,5 @@
 # filetransfer.py (C)
+import tempfile
 import os
 import socket
 import threading
@@ -11,6 +12,7 @@ from ui import out
 CHUNK = 65536
 DOWNLOAD_DIR = "downloads"
 MAX_FIELD = 255
+_finalize_lock = threading.Lock()
 
 
 def human_size(n):
@@ -79,25 +81,44 @@ def _send_worker(peer, path, name):
 def handle_incoming_file(sock, addr):
     sender = read_until_bar(sock)
     name = read_until_bar(sock)
-    size = read_size(sock, limit=1 << 40)   # giới hạn chọn tạm, cần cả nhóm xác nhận
+    size = read_size(sock, limit=1 << 40)
+
     base = os.path.basename(name)
     if base in ("", ".", ".."):
         raise ProtocolError("tên file không hợp lệ")
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    part = os.path.join(DOWNLOAD_DIR, base + ".part")
+    part = None
+
     try:
-        with open(part, "wb") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=DOWNLOAD_DIR,
+            prefix="recv-",
+            suffix=".part",
+            delete=False,
+        ) as f:
+            part = f.name
             left, done, mark = size, 0, 0
+
             while left > 0:
                 data = recv_exact(sock, min(CHUNK, left))
                 f.write(data)
                 left -= len(data)
                 done += len(data)
-                mark = _progress(f"Receiving {base}", done, size, mark)
-        os.replace(part, unique_path(DOWNLOAD_DIR, base))
-        out(f"[*] Received {base} from {sender} ... 100% Done.")
-    except (OSError, ProtocolError) as e:   # OSError gồm cả ConnectionError
-        if os.path.exists(part):
+                mark = _progress(
+                    f"Receiving {base}", done, size, mark
+                )
+
+        with _finalize_lock:
+            target = unique_path(DOWNLOAD_DIR, base)
+            os.replace(part, target)
+
+        saved_name = os.path.basename(target)
+        out(f"[*] Received {saved_name} from {sender} ... 100% Done.")
+
+    except (OSError, ProtocolError) as e:
+        if part is not None and os.path.exists(part):
             os.remove(part)
         out(f"[!] Nhận {base} thất bại: {e}")
-        raise   # để worker của B đóng socket; thống nhất với B là chỉ báo lỗi một lần
+        raise
